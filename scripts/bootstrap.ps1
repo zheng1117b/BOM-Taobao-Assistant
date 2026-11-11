@@ -29,6 +29,81 @@ function Get-NodeMajor([string]$nodeExecutable) {
   return 0
 }
 
+function Get-Sha256([string]$filePath) {
+  $stream = $null
+  $sha256 = $null
+  try {
+    $stream = [System.IO.File]::OpenRead($filePath)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    return ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '')
+  } finally {
+    if ($sha256) { $sha256.Dispose() }
+    if ($stream) { $stream.Dispose() }
+  }
+}
+
+function Test-ZipArchive([string]$archivePath, [string]$expectedHash) {
+  if (-not (Test-Path -LiteralPath $archivePath)) { return $false }
+  if ((Get-Item -LiteralPath $archivePath).Length -lt 1024) { return $false }
+  $zip = $null
+  try {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
+    if ($zip.Entries.Count -eq 0) { return $false }
+  } catch {
+    return $false
+  } finally {
+    if ($zip) { $zip.Dispose() }
+  }
+  if ($expectedHash) {
+    $actualHash = Get-Sha256 $archivePath
+    if ($actualHash -ne $expectedHash) { return $false }
+  }
+  return $true
+}
+
+function Get-OfficialChecksum([string]$baseUrl, [string]$archiveName) {
+  try {
+    $response = Invoke-WebRequest -Uri "$baseUrl/SHASUMS256.txt" -UseBasicParsing -TimeoutSec 120
+    $escapedName = [Regex]::Escape($archiveName)
+    foreach ($line in ([string]$response.Content -split "`n")) {
+      if ($line.Trim() -match "^([0-9a-fA-F]{64})\s+$escapedName$") {
+        return $Matches[1].ToUpperInvariant()
+      }
+    }
+  } catch {
+    Write-Host '警告：暂时无法获取官方校验和，将仅验证 ZIP 结构。' -ForegroundColor Yellow
+  }
+  return $null
+}
+
+function Download-VerifiedArchive([string]$downloadUrl, [string]$archivePath, [string]$expectedHash) {
+  if (Test-ZipArchive $archivePath $expectedHash) { return }
+  if (Test-Path -LiteralPath $archivePath) {
+    Write-Host '检测到损坏或不完整的 Node.js 下载缓存，正在自动删除。' -ForegroundColor Yellow
+    Remove-Item -LiteralPath $archivePath -Force
+  }
+
+  $partialPath = "$archivePath.partial"
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    try {
+      if (Test-Path -LiteralPath $partialPath) { Remove-Item -LiteralPath $partialPath -Force }
+      Write-Host "正在下载 Node.js（第 $attempt/3 次尝试）..."
+      Invoke-WebRequest -Uri $downloadUrl -OutFile $partialPath -UseBasicParsing -TimeoutSec 120
+      if (-not (Test-ZipArchive $partialPath $expectedHash)) {
+        throw '下载文件未通过 ZIP 完整性或 SHA-256 校验。'
+      }
+      Move-Item -LiteralPath $partialPath -Destination $archivePath -Force
+      return
+    } catch {
+      if (Test-Path -LiteralPath $partialPath) { Remove-Item -LiteralPath $partialPath -Force }
+      if ($attempt -eq 3) { throw "Node.js 下载连续失败3次：$($_.Exception.Message)" }
+      Write-Host "下载失败，将自动重试：$($_.Exception.Message)" -ForegroundColor Yellow
+      Start-Sleep -Seconds (2 * $attempt)
+    }
+  }
+}
+
 function Install-PortableNode {
   $portableNode = Join-Path $portableNodeRoot 'node.exe'
   if ((Test-Path -LiteralPath $portableNode) -and ((Get-NodeMajor $portableNode) -ge $minimumNodeMajor)) {
@@ -40,13 +115,13 @@ function Install-PortableNode {
 
   $architecture = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'win-arm64' } else { 'win-x64' }
   $archiveName = "node-v$nodeVersion-$architecture.zip"
-  $downloadUrl = "https://nodejs.org/dist/v$nodeVersion/$archiveName"
+  $baseUrl = "https://nodejs.org/dist/v$nodeVersion"
+  $downloadUrl = "$baseUrl/$archiveName"
   $archivePath = Join-Path $downloadRoot $archiveName
   $extractRoot = Join-Path $runtimeRoot 'node-extract'
 
-  if (-not (Test-Path -LiteralPath $archivePath)) {
-    Invoke-WebRequest -Uri $downloadUrl -OutFile $archivePath -UseBasicParsing
-  }
+  $expectedHash = Get-OfficialChecksum $baseUrl $archiveName
+  Download-VerifiedArchive $downloadUrl $archivePath $expectedHash
   if (Test-Path -LiteralPath $extractRoot) { Remove-Item -LiteralPath $extractRoot -Recurse -Force }
   if (Test-Path -LiteralPath $portableNodeRoot) { Remove-Item -LiteralPath $portableNodeRoot -Recurse -Force }
   Expand-Archive -LiteralPath $archivePath -DestinationPath $extractRoot -Force
@@ -81,7 +156,7 @@ try {
   if (-not (Test-Path -LiteralPath $npmExecutable)) { $npmExecutable = (Get-Command npm.cmd).Source }
   if (-not (Test-Path -LiteralPath $npxExecutable)) { $npxExecutable = (Get-Command npx.cmd).Source }
 
-  $currentHash = (Get-FileHash -LiteralPath $lockFile -Algorithm SHA256).Hash
+  $currentHash = Get-Sha256 $lockFile
   $savedHash = if (Test-Path -LiteralPath $dependencyMarker) { (Get-Content -Raw -LiteralPath $dependencyMarker).Trim() } else { '' }
   if ((-not (Test-Path -LiteralPath (Join-Path $projectRoot 'node_modules\express'))) -or $currentHash -ne $savedHash) {
     Write-Step '正在安装项目依赖...'

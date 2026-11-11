@@ -4,10 +4,13 @@
   "private": true,
   "description": "从 BOM 识别元器件并在淘宝店铺中检索、审核和加入购物车",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test --test-isolation=none",
+    "test": "node --test",
     "test:browser": "node test/browser-smoke.js"
   },
   "dependencies": {

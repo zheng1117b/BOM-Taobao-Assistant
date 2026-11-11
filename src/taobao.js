@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright';
 import { buildSearchQueries, scoreProduct } from './bom.js';
@@ -14,6 +16,28 @@ let keeperPage;
 export const DEFAULT_SEARCH_INTERVAL_MS = 12000;
 let nextSearchAllowedAt = 0;
 const blockedHosts = new Map();
+
+const PROFILE_CACHE_PATHS = [
+  'BrowserMetrics',
+  'Crashpad/reports',
+  'DawnCache',
+  'GraphiteDawnCache',
+  'GrShaderCache',
+  'ShaderCache',
+  'Default/Cache',
+  'Default/Code Cache',
+  'Default/GPUCache',
+  'Default/Service Worker/CacheStorage'
+];
+
+export function cleanBrowserCache(profileDir, temporaryCacheDir) {
+  for (const relativePath of PROFILE_CACHE_PATHS) {
+    fs.rmSync(path.join(profileDir, relativePath), { recursive: true, force: true });
+  }
+  if (temporaryCacheDir) {
+    fs.rmSync(temporaryCacheDir, { recursive: true, force: true });
+  }
+}
 
 function stoppedError() {
   const error = new Error('用户已停止当前任务');
@@ -35,11 +59,21 @@ function clearContext(context) {
 
 async function launchContext(dataDir) {
   const profileDir = path.join(dataDir, '.browser-data');
+  const temporaryCacheDir = path.join(os.tmpdir(), `bom-taobao-cache-${process.pid}`);
+  // 只清理网页、图片和渲染缓存，保留 Cookie、Local Storage 等登录数据。
+  cleanBrowserCache(profileDir, temporaryCacheDir);
+  fs.mkdirSync(temporaryCacheDir, { recursive: true });
   const launchOptions = {
     headless: false,
     viewport: { width: 1440, height: 900 },
     locale: 'zh-CN',
-    args: ['--disable-blink-features=AutomationControlled']
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--disable-application-cache',
+      '--disk-cache-size=1',
+      '--media-cache-size=1',
+      `--disk-cache-dir=${temporaryCacheDir}`
+    ]
   };
   let context;
   try {
@@ -49,7 +83,10 @@ async function launchContext(dataDir) {
     context = await chromium.launchPersistentContext(profileDir, launchOptions);
   }
   activeContext = context;
-  context.on('close', () => clearContext(context));
+  context.on('close', () => {
+    cleanBrowserCache(profileDir, temporaryCacheDir);
+    clearContext(context);
+  });
   keeperPage = context.pages().find(page => !page.isClosed()) || await context.newPage();
   return context;
 }

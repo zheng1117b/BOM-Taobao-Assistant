@@ -5,7 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import XLSX from 'xlsx';
 import { buildItemKey, buildSearchQueries, buildSearchTerm, extractPackageName, parseBom, scoreProduct } from '../src/bom.js';
-import { buildSearchSources, DEFAULT_SEARCH_INTERVAL_MS, identifyPreferredShop, isAccessDeniedText, isLoginUrl, isSecurityVerificationUrl, SHOP_SOURCES } from '../src/taobao.js';
+import { buildSearchSources, cleanBrowserCache, DEFAULT_SEARCH_INTERVAL_MS, identifyPreferredShop, isAccessDeniedText, isLoginUrl, isSecurityVerificationUrl, SHOP_SOURCES } from '../src/taobao.js';
 import { cancelJob, createJob } from '../src/jobs.js';
 
 test('解析并合并相同 BOM 物料', () => {
@@ -27,6 +27,27 @@ test('解析并合并相同 BOM 物料', () => {
     assert.match(result.items[1].searchTerm, /100nF 50V 0603/);
   } finally {
     fs.unlinkSync(file);
+  }
+});
+
+test('清理浏览器缓存时保留登录数据', () => {
+  const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bom-profile-'));
+  const temporaryCacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bom-cache-'));
+  const cookieFile = path.join(profileDir, 'Default', 'Cookies');
+  const cacheFile = path.join(profileDir, 'Default', 'Cache', 'Cache_Data', 'data_1');
+  fs.mkdirSync(path.dirname(cookieFile), { recursive: true });
+  fs.mkdirSync(path.dirname(cacheFile), { recursive: true });
+  fs.writeFileSync(cookieFile, '保留登录状态');
+  fs.writeFileSync(cacheFile, '删除图片缓存');
+  fs.writeFileSync(path.join(temporaryCacheDir, 'cache.bin'), '删除临时缓存');
+  try {
+    cleanBrowserCache(profileDir, temporaryCacheDir);
+    assert.equal(fs.existsSync(cookieFile), true);
+    assert.equal(fs.existsSync(cacheFile), false);
+    assert.equal(fs.existsSync(temporaryCacheDir), false);
+  } finally {
+    fs.rmSync(profileDir, { recursive: true, force: true });
+    fs.rmSync(temporaryCacheDir, { recursive: true, force: true });
   }
 });
 

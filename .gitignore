@@ -1,0 +1,7 @@
+node_modules/
+uploads/
+.browser-data/
+data/*.json
+!data/.gitkeep
+npm-debug.log*
+

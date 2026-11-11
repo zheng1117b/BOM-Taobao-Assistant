@@ -1,0 +1,20 @@
+{
+  "name": "bom-taobao-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "description": "从 BOM 识别元器件并在淘宝店铺中检索、审核和加入购物车",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test --test-isolation=none",
+    "test:browser": "node test/browser-smoke.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "multer": "^2.0.2",
+    "playwright": "^1.55.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {}
+}

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BOM 淘宝采购助手</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div><span class="eyebrow">LOCAL PROCUREMENT</span><h1>BOM 淘宝采购助手</h1></div>
+    <button id="loginBtn" class="secondary">打开淘宝并登录 / 验证</button>
+  </header>
+  <main>
+    <section class="hero card">
+      <div><h2>从 BOM 到购物车，先匹配，再确认</h2><p>依次在优信电子、欧贝顿和 Risym 店铺内搜索，每次搜索完成后等待12秒。</p></div>
+      <label class="upload"><input id="file" type="file" accept=".xlsx,.xls,.csv"><span>选择 BOM 文件</span><small>XLSX / XLS / CSV，最大 20 MB</small></label>
+    </section>
+
+    <section id="bomSection" class="card hidden">
+      <div class="section-head"><div><span class="step">01</span><h2>BOM 清单</h2><p id="bomMeta"></p></div><div class="actions"><label class="check"><input id="fallback" type="checkbox" checked> 三家店均无可靠结果时搜索其他店铺</label><button id="resetProgressBtn" class="secondary">清除已加购记录</button><button id="searchBtn">开始匹配</button></div></div>
+      <div class="table-wrap"><table><thead><tr><th>选择</th><th>状态</th><th>位号</th><th>型号 / 参数</th><th>封装</th><th>数量</th><th>检索词</th></tr></thead><tbody id="bomBody"></tbody></table></div>
+    </section>
+
+    <section id="progressSection" class="card hidden">
+      <div class="progress-line"><div><strong id="progressTitle">处理中</strong><span id="progressText"></span></div><div class="progress-actions"><span id="progressCount"></span><button id="stopBtn" class="danger hidden">停止当前任务</button></div></div>
+      <div class="bar"><i id="progressBar"></i></div>
+    </section>
+
+    <section id="resultSection" class="card hidden">
+      <div class="section-head"><div><span class="step">02</span><h2>审核匹配</h2><p>逐项确认商品。低分结果建议打开链接人工核对。</p></div><button id="cartBtn">将已确认项加入购物车</button></div>
+      <div id="results" class="results"></div>
+    </section>
+
+    <section id="cartSection" class="card hidden">
+      <div class="section-head"><div><span class="step">03</span><h2>加购结果</h2><p>含规格选项的商品会保留浏览器页面，请人工选择后加购。</p></div></div>
+      <div id="cartResults" class="cart-results"></div>
+    </section>
+  </main>
+  <div id="toast" class="toast"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
